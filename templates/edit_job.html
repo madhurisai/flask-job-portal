@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Edit Job</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="container">
+    <h1>Edit Job</h1>
+
+    <form class="form" method="POST">
+      <label>Title</label>
+      <input type="text" name="title" value="{{ job['title'] }}" required>
+
+      <label>Company</label>
+      <input type="text" name="company" value="{{ job['company'] }}" required>
+
+      <label>Location</label>
+      <input type="text" name="location" value="{{ job['location'] }}" required>
+
+      <button type="submit">Update Job</button>
+    </form>
+
+    <a class="link" href="{{ url_for('home') }}">← Back to Job Openings</a>
+  </div>
+</body>
+</html>
