@@ -5,8 +5,9 @@ from psycopg2.extras import RealDictCursor
 
 app = Flask(__name__)
 
-# Optional but recommended
-app.secret_key = os.environ.get("SECRET_KEY", "dev-secret")
+DATABASE_URL = os.environ.get("DATABASE_URL")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "database.db")
 
 
 def get_db_connection():
