@@ -5,6 +5,8 @@ app = Flask(__name__)
 
 # ✅ If DATABASE_URL exists (Render/Postgres), use it.
 # ✅ Otherwise, use local SQLite database.db
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "database.db")
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 def get_db_connection():
