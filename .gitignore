@@ -1,19 +1,7 @@
-# Virtual environment
+database.db
 venv/
 .venv/
-
-# Python cache
-_pycache_/
+__pycache__/
 *.pyc
-
-# Database
-database.db
-
-# OS files
 .DS_Store
-
-# Environment variables
 .env
-
-# Flask instance folder
-instance/

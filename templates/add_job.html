@@ -5,23 +5,22 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-  <div class="container">
-    <h1>Add New Job</h1>
+  <h1>Add New Job</h1>
 
-    <form class="form" action="{{ url_for('add_job') }}" method="POST">
-      <label>Title</label>
-      <input type="text" name="title" required>
+  <form action="/add" method="POST">
+    <label>Title:</label><br>
+    <input type="text" name="title" required><br><br>
 
-      <label>Company</label>
-      <input type="text" name="company" required>
+    <label>Company:</label><br>
+    <input type="text" name="company" required><br><br>
 
-      <label>Location</label>
-      <input type="text" name="location" required>
+    <label>Location:</label><br>
+    <input type="text" name="location" required><br><br>
 
-      <button type="submit">Save Job</button>
-    </form>
+    <button type="submit">Save Job</button>
+  </form>
 
-    <a class="link" href="{{ url_for('home') }}">← Back to Job Openings</a>
-  </div>
+  <br>
+  <a href="/">Back to Job Openings</a>
 </body>
 </html>

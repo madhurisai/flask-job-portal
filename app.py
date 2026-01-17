@@ -1,121 +1,187 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for
+import os
 import sqlite3
-from datetime import datetime
-
 app = Flask(__name__)
-app.secret_key = "supersecretkey"  # required for flash messages
 
+# ✅ If DATABASE_URL exists (Render/Postgres), use it.
+# ✅ Otherwise, use local SQLite database.db
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 def get_db_connection():
-    conn = sqlite3.connect("database.db")
-    conn.row_factory = sqlite3.Row
-    return conn
+    if DATABASE_URL:
+        import psycopg2
+        conn = psycopg2.connect(DATABASE_URL)
+        return conn
+    else:
+        conn = sqlite3.connect("database.db")
+        conn.row_factory = sqlite3.Row
+        return conn
 
+def init_db():
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Postgres uses SERIAL, SQLite uses INTEGER PRIMARY KEY AUTOINCREMENT
+    if DATABASE_URL:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS jobs (
+                id SERIAL PRIMARY KEY,
+                title TEXT NOT NULL,
+                company TEXT NOT NULL,
+                location TEXT NOT NULL
+            );
+        """)
+    else:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                company TEXT NOT NULL,
+                location TEXT NOT NULL
+            );
+        """)
+
+    conn.commit()
+    conn.close()
 
 @app.route("/")
 def home():
-    q = request.args.get("q", "").strip()
     conn = get_db_connection()
+    cur = conn.cursor()
 
-    if q:
-        jobs = conn.execute(
-            """
-            SELECT id, title, company, location, posted_date
-            FROM jobs
-            WHERE title LIKE ? OR company LIKE ? OR location LIKE ?
-            ORDER BY id DESC
-            """,
-            (f"%{q}%", f"%{q}%", f"%{q}%"),
-        ).fetchall()
+    if DATABASE_URL:
+        cur.execute("SELECT id, title, company, location FROM jobs ORDER BY id DESC;")
+        rows = cur.fetchall()
+
+        jobs = [{"id": r[0], "title": r[1], "company": r[2], "location": r[3]} for r in rows]
     else:
-        jobs = conn.execute(
-            """
-            SELECT id, title, company, location, posted_date
-            FROM jobs
-            ORDER BY id DESC
-            """
-        ).fetchall()
+        cur.execute("SELECT id, title, company, location FROM jobs ORDER BY id DESC;")
+        jobs = cur.fetchall()
 
     conn.close()
-    return render_template("index.html", jobs=jobs, q=q)
-
+    return render_template("index.html", jobs=jobs)
 
 @app.route("/add", methods=["GET", "POST"])
 def add_job():
     if request.method == "POST":
-        title = request.form.get("title", "").strip()
-        company = request.form.get("company", "").strip()
-        location = request.form.get("location", "").strip()
-
-        if not title or not company or not location:
-            flash("⚠️ Please fill all fields.")
-            return redirect(url_for("add_job"))
-
-        posted_date = datetime.now().strftime("%Y-%m-%d")
+        title = request.form.get("title")
+        company = request.form.get("company")
+        location = request.form.get("location")
 
         conn = get_db_connection()
-        conn.execute(
-            "INSERT INTO jobs (title, company, location, posted_date) VALUES (?, ?, ?, ?)",
-            (title, company, location, posted_date),
-        )
+        cur = conn.cursor()
+
+        if DATABASE_URL:
+            cur.execute(
+                "INSERT INTO jobs (title, company, location) VALUES (%s, %s, %s);",
+                (title, company, location)
+            )
+        else:
+            cur.execute(
+                "INSERT INTO jobs (title, company, location) VALUES (?, ?, ?);",
+                (title, company, location)
+            )
+
         conn.commit()
         conn.close()
-
-        flash("✅ Job added successfully!")
         return redirect(url_for("home"))
 
     return render_template("add_job.html")
 
-
-@app.route("/edit/<int:job_id>", methods=["GET", "POST"])
-def edit_job(job_id):
-    conn = get_db_connection()
-
-    if request.method == "POST":
-        title = request.form.get("title", "").strip()
-        company = request.form.get("company", "").strip()
-        location = request.form.get("location", "").strip()
-
-        if not title or not company or not location:
-            flash("⚠️ Please fill all fields.")
-            conn.close()
-            return redirect(url_for("edit_job", job_id=job_id))
-
-        conn.execute(
-            "UPDATE jobs SET title = ?, company = ?, location = ? WHERE id = ?",
-            (title, company, location, job_id),
-        )
-        conn.commit()
-        conn.close()
-
-        flash("✏️ Job updated successfully!")
-        return redirect(url_for("home"))
-
-    job = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
-    conn.close()
-
-    if job is None:
-        flash("❌ Job not found.")
-        return redirect(url_for("home"))
-
-    return render_template("edit_job.html", job=job)
-
-
-@app.route("/delete/<int:job_id>", methods=["POST"])
-def delete_job(job_id):
-    conn = get_db_connection()
-    conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
-    conn.commit()
-    conn.close()
-
-    flash("🗑️ Job deleted!")
-    return redirect(url_for("home"))
-
-
-@app.route("/ping")
-def ping():
-    return "OK"
-
+# ✅ This will run on startup (local + production)
+init_db()
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5050)
+    app.run(debug=True, port=5050)
+
+
+
+
+# ✅ If DATABASE_URL exists (Render/Postgres), use it.
+# ✅ Otherwise, use local SQLite database.dbDATABASE_URL = os.environ.get("DATABASE_URL")
+
+def get_db_connection():
+    if DATABASE_URL:
+        import psycopg2
+        conn = psycopg2.connect(DATABASE_URL)
+        return conn
+    else:
+        conn = sqlite3.connect("database.db")
+        conn.row_factory = sqlite3.Row
+        return conn
+
+def init_db():
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Postgres uses SERIAL, SQLite uses INTEGER PRIMARY KEY AUTOINCREMENT
+    if DATABASE_URL:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS jobs (
+                id SERIAL PRIMARY KEY,
+                title TEXT NOT NULL,
+                company TEXT NOT NULL,
+                location TEXT NOT NULL
+            );
+        """)
+    else:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                company TEXT NOT NULL,
+                location TEXT NOT NULL
+            );
+        """)
+
+    conn.commit()   
+    conn.close()
+
+@app.route("/")
+def home():
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    if DATABASE_URL:
+        cur.execute("SELECT id, title, company, location FROM jobs ORDER BY id DESC;")
+        rows = cur.fetchall()
+        jobs = [{"id": r[0], "title": r[1], "company": r[2], "location": r[3]} for r in rows]
+    else:
+        cur.execute("SELECT id, title, company, location FROM jobs ORDER BY id DESC;")
+        jobs = cur.fetchall()
+
+    conn.close()
+    return render_template("index.html", jobs=jobs)
+
+@app.route("/add", methods=["GET", "POST"])
+def add_job():
+    if request.method == "POST":
+        title = request.form.get("title")
+        company = request.form.get("company")
+        location = request.form.get("location")
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        if DATABASE_URL:
+            cur.execute(
+                "INSERT INTO jobs (title, company, location) VALUES (%s, %s, %s);",
+                (title, company, location)
+            )
+        else:
+            cur.execute(
+                "INSERT INTO jobs (title, company, location) VALUES (?, ?, ?);",
+                (title, company, location)
+            )
+
+        conn.commit()
+        conn.close()
+        return redirect(url_for("home"))
+
+    return render_template("add_job.html")
+
+# ✅ This will run on startup (local + production)
+init_db()
+
+if __name__ == "__main__":
+    app.run(debug=True, port=5050)

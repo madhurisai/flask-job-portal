@@ -5,54 +5,15 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-  <div class="container">
-    <h1>Job Openings</h1>
+  <h1>Job Openings</h1>
+  <a href="/add">Add New Job</a>
+  <hr>
 
-    <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-      <a class="button" href="{{ url_for('add_job') }}">+ Add New Job</a>
+  {% for job in jobs %}
+    <h3>{{ job.title }}</h3>
+    <p>{{ job.company }} - {{ job.location }}</p>
+    <hr>
+  {% endfor %}
 
-      <form method="GET" action="{{ url_for('home') }}" style="display:flex; gap:8px; align-items:center;">
-        <input type="text" name="q" placeholder="Search title/company/location..." value="{{ q }}" />
-        <button type="submit">Search</button>
-        {% if q %}
-          <a class="link" href="{{ url_for('home') }}">Clear</a>
-        {% endif %}
-      </form>
-    </div>
-
-    <!-- Flash messages -->
-    {% with messages = get_flashed_messages() %}
-      {% if messages %}
-        <div class="flash">
-          {% for message in messages %}
-            <p>{{ message }}</p>
-          {% endfor %}
-        </div>
-      {% endif %}
-    {% endwith %}
-
-    {% if jobs|length == 0 %}
-      <p class="muted">No jobs found.</p>
-    {% else %}
-      <div class="cards">
-        {% for job in jobs %}
-          <div class="card">
-            <h2>{{ job["title"] }}</h2>
-            <p><strong>{{ job["company"] }}</strong> — {{ job["location"] }}</p>
-            <p class="muted">Posted on: {{ job["posted_date"] or "N/A" }}</p>
-
-            <div style="display:flex; gap:10px; align-items:center;">
-              <a class="button" href="{{ url_for('edit_job', job_id=job['id']) }}">Edit</a>
-
-              <form method="POST" action="{{ url_for('delete_job', job_id=job['id']) }}"
-                    onsubmit="return confirm('Delete this job?');">
-                <button class="danger" type="submit">Delete</button>
-              </form>
-            </div>
-          </div>
-        {% endfor %}
-      </div>
-    {% endif %}
-  </div>
 </body>
 </html>
