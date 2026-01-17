@@ -1,101 +1,99 @@
-from flask import Flask, render_template, request, redirect, url_for
 import os
-import sqlite3
+from flask import Flask, render_template, request, redirect, url_for
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 app = Flask(__name__)
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "database.db")
-DATABASE_URL = os.environ.get("DATABASE_URL")
+# Optional but recommended
+app.secret_key = os.environ.get("SECRET_KEY", "dev-secret")
 
 
 def get_db_connection():
-    if DATABASE_URL:
-        import psycopg2
-        return psycopg2.connect(DATABASE_URL)
-    else:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        return conn
+    """
+    Connect to Render Postgres using DATABASE_URL
+    """
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        raise RuntimeError("DATABASE_URL is not set. Add it in Render Environment Variables.")
+    return psycopg2.connect(db_url, cursor_factory=RealDictCursor)
 
 
 def init_db():
+    """
+    Create the jobs table if it doesn't exist (runs on startup)
+    """
     conn = get_db_connection()
     cur = conn.cursor()
-
-    if DATABASE_URL:
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS jobs (
-                id SERIAL PRIMARY KEY,
-                title TEXT NOT NULL,
-                company TEXT NOT NULL,
-                location TEXT NOT NULL
-            );
-        """)
-    else:
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS jobs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                company TEXT NOT NULL,
-                location TEXT NOT NULL
-            );
-        """)
-
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS jobs (
+            id SERIAL PRIMARY KEY,
+            title TEXT NOT NULL,
+            company TEXT NOT NULL,
+            location TEXT NOT NULL,
+            description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
     conn.commit()
+    cur.close()
     conn.close()
+
+
+# Run table creation once when the app starts
+init_db()
+
+
+@app.route("/ping")
+def ping():
+    return "OK"
 
 
 @app.route("/")
 def home():
     conn = get_db_connection()
     cur = conn.cursor()
-
-    cur.execute("SELECT id, title, company, location FROM jobs ORDER BY id DESC;")
-    rows = cur.fetchall()
-
-    # Make rows work for both Postgres (tuples) and SQLite (Row objects)
-    if DATABASE_URL:
-        jobs = [{"id": r[0], "title": r[1], "company": r[2], "location": r[3]} for r in rows]
-    else:
-        jobs = rows
-
+    cur.execute("""
+        SELECT id, title, company, location, description, created_at
+        FROM jobs
+        ORDER BY created_at DESC
+    """)
+    jobs = cur.fetchall()  # list of dicts because RealDictCursor
+    cur.close()
     conn.close()
+
     return render_template("index.html", jobs=jobs)
 
 
 @app.route("/add", methods=["GET", "POST"])
 def add_job():
     if request.method == "POST":
-        title = request.form.get("title")
-        company = request.form.get("company")
-        location = request.form.get("location")
+        title = request.form.get("title", "").strip()
+        company = request.form.get("company", "").strip()
+        location = request.form.get("location", "").strip()
+        description = request.form.get("description", "").strip()
+
+        # Basic validation
+        if not title or not company or not location:
+            return "Title, Company, and Location are required", 400
 
         conn = get_db_connection()
         cur = conn.cursor()
-
-        if DATABASE_URL:
-            cur.execute(
-                "INSERT INTO jobs (title, company, location) VALUES (%s, %s, %s);",
-                (title, company, location)
-            )
-        else:
-            cur.execute(
-                "INSERT INTO jobs (title, company, location) VALUES (?, ?, ?);",
-                (title, company, location)
-            )
-
+        cur.execute(
+            """
+            INSERT INTO jobs (title, company, location, description)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (title, company, location, description)
+        )
         conn.commit()
+        cur.close()
         conn.close()
+
         return redirect(url_for("home"))
 
     return render_template("add_job.html")
 
 
-# Initialize DB once on startup
-init_db()
-
-
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5050))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(debug=True)
