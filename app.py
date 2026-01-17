@@ -1,29 +1,22 @@
 import os
 from flask import Flask, render_template, request, redirect, url_for
-import psycopg2
-from psycopg2.extras import RealDictCursor
+import psycopg
+from psycopg.rows import dict_row
 
 app = Flask(__name__)
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "database.db")
 
 
 def get_db_connection():
-    """
-    Connect to Render Postgres using DATABASE_URL
-    """
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
         raise RuntimeError("DATABASE_URL is not set. Add it in Render Environment Variables.")
-    return psycopg2.connect(db_url, cursor_factory=RealDictCursor)
+    # dict_row makes fetchall() return list of dicts (similar to RealDictCursor)
+    return psycopg.connect(db_url, row_factory=dict_row)
 
 
 def init_db():
-    """
-    Create the jobs table if it doesn't exist (runs on startup)
-    """
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -59,10 +52,9 @@ def home():
         FROM jobs
         ORDER BY created_at DESC
     """)
-    jobs = cur.fetchall()  # list of dicts because RealDictCursor
+    jobs = cur.fetchall()  # list of dicts (dict_row)
     cur.close()
     conn.close()
-
     return render_template("index.html", jobs=jobs)
 
 
@@ -74,7 +66,6 @@ def add_job():
         location = request.form.get("location", "").strip()
         description = request.form.get("description", "").strip()
 
-        # Basic validation
         if not title or not company or not location:
             return "Title, Company, and Location are required", 400
 
@@ -97,4 +88,5 @@ def add_job():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5050))
+    app.run(host="0.0.0.0", port=port, debug=True)
