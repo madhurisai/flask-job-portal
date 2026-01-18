@@ -1,40 +1,74 @@
 import os
+import sqlite3
 from flask import Flask, render_template, request, redirect, url_for
+
 import psycopg
 from psycopg.rows import dict_row
 
 app = Flask(__name__)
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SQLITE_PATH = os.path.join(BASE_DIR, "database.db")
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 
 def get_db_connection():
-    db_url = os.environ.get("DATABASE_URL")
-    if not db_url:
-        raise RuntimeError("DATABASE_URL is not set. Add it in Render Environment Variables.")
-    # dict_row makes fetchall() return list of dicts (similar to RealDictCursor)
-    return psycopg.connect(db_url, row_factory=dict_row)
+    # Render/Production (Postgres)
+    if DATABASE_URL:
+        return psycopg.connect(DATABASE_URL, row_factory=dict_row)
+
+    # Local dev (SQLite)
+    conn = sqlite3.connect(SQLITE_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("""
+
+    if DATABASE_URL:
+        # Postgres
+        cur.execute("""
         CREATE TABLE IF NOT EXISTS jobs (
             id SERIAL PRIMARY KEY,
+            source TEXT,
+            source_job_id TEXT,
             title TEXT NOT NULL,
             company TEXT NOT NULL,
             location TEXT NOT NULL,
             description TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            apply_url TEXT,
+            posted_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (source, source_job_id)
         )
-    """)
+        """)
+    else:
+        # SQLite (no SERIAL / different timestamp defaults)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source TEXT,
+            source_job_id TEXT,
+            title TEXT NOT NULL,
+            company TEXT NOT NULL,
+            location TEXT NOT NULL,
+            description TEXT,
+            apply_url TEXT,
+            posted_at TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+        """)
+        # SQLite: unique constraint only works if defined in CREATE TABLE above.
+        # For simplicity in local dev, you can skip it or recreate table with it later.
+
     conn.commit()
     cur.close()
     conn.close()
 
 
-# Run table creation once when the app starts
+# ✅ Run init_db safely on startup (won't crash without DATABASE_URL)
 init_db()
 
 
@@ -47,14 +81,28 @@ def ping():
 def home():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("""
-        SELECT id, title, company, location, description, created_at
-        FROM jobs
-        ORDER BY created_at DESC
-    """)
-    jobs = cur.fetchall()  # list of dicts (dict_row)
+
+    if DATABASE_URL:
+        cur.execute("""
+            SELECT title, company, location, description, apply_url, posted_at, created_at
+            FROM jobs
+            WHERE created_at::date = CURRENT_DATE
+            ORDER BY COALESCE(posted_at, created_at) DESC
+            LIMIT 200
+        """)
+    else:
+        cur.execute("""
+            SELECT title, company, location, description, apply_url, posted_at, created_at
+            FROM jobs
+            WHERE created_at::date = CURRENT_DATE
+            ORDER BY created_at DESC
+            LIMIT 200
+        """)
+
+    jobs = cur.fetchall()
     cur.close()
     conn.close()
+
     return render_template("index.html", jobs=jobs)
 
 
@@ -65,19 +113,27 @@ def add_job():
         company = request.form.get("company", "").strip()
         location = request.form.get("location", "").strip()
         description = request.form.get("description", "").strip()
+        apply_url = request.form.get("apply_url", "").strip()
 
         if not title or not company or not location:
             return "Title, Company, and Location are required", 400
 
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute(
-            """
-            INSERT INTO jobs (title, company, location, description)
-            VALUES (%s, %s, %s, %s)
-            """,
-            (title, company, location, description)
-        )
+
+        if DATABASE_URL:
+            cur.execute(
+                """INSERT INTO jobs (source, source_job_id, title, company, location, description, apply_url)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                ("manual", f"manual-{title}-{company}-{location}", title, company, location, description, apply_url),
+            )
+        else:
+            cur.execute(
+                """INSERT INTO jobs (source, source_job_id, title, company, location, description, apply_url)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                ("manual", f"manual-{title}-{company}-{location}", title, company, location, description, apply_url),
+            )
+
         conn.commit()
         cur.close()
         conn.close()
