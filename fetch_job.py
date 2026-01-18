@@ -7,7 +7,7 @@ from psycopg.rows import dict_row
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 # Add more company slugs anytime
-LEVER_COMPANIES = ["netflix", "robinhood"]
+LEVER_COMPANIES = ["netflix", "coinbase", "postman", "asana"]
 GREENHOUSE_COMPANIES = ["stripe", "airbnb"]
 
 def db_conn():
@@ -82,13 +82,19 @@ def fetch_greenhouse(company_token):
         location = (item.get("location") or {}).get("name") or "N/A"
         apply_url = item.get("absolute_url")
 
+        content = item.get("content")
+        if isinstance(content, dict):
+            description = safe_text(content.get("description"))
+        else:
+            description = safe_text(content)
+
         jobs.append({
             "source": "greenhouse",
             "source_job_id": str(job_id),
             "title": title,
             "company": company_token,
             "location": location,
-            "description": safe_text((item.get("content") or {}).get("description")),
+            "description": description,
             "apply_url": apply_url,
             "posted_at": None,
         })
