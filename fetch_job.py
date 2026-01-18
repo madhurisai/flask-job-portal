@@ -7,8 +7,8 @@ from psycopg.rows import dict_row
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 # Add more company slugs anytime
-LEVER_COMPANIES = ["netflix", "coinbase", "postman", "asana"]
-GREENHOUSE_COMPANIES = ["stripe", "airbnb"]
+GREENHOUSE_COMPANIES = ["stripe", "airbnb", "databricks", "doordash", "coinbase"]
+LEVER_COMPANIES = []
 
 def db_conn():
     if not DATABASE_URL:
