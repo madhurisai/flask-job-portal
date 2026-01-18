@@ -1,0 +1,131 @@
+import os
+from datetime import datetime, timezone
+import requests
+import psycopg
+from psycopg.rows import dict_row
+
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+# Add more company slugs anytime
+LEVER_COMPANIES = ["netflix", "robinhood"]
+GREENHOUSE_COMPANIES = ["stripe", "airbnb"]
+
+def db_conn():
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL not set")
+    return psycopg.connect(DATABASE_URL, row_factory=dict_row)
+
+UPSERT_SQL = """
+INSERT INTO jobs (source, source_job_id, title, company, location, description, apply_url, posted_at)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+ON CONFLICT (source, source_job_id)
+DO UPDATE SET
+  title = EXCLUDED.title,
+  company = EXCLUDED.company,
+  location = EXCLUDED.location,
+  description = EXCLUDED.description,
+  apply_url = EXCLUDED.apply_url,
+  posted_at = EXCLUDED.posted_at;
+"""
+
+def safe_text(x, limit=4000):
+    if not x:
+        return None
+    return str(x)[:limit]
+
+def fetch_lever(company_slug):
+    url = f"https://api.lever.co/v0/postings/{company_slug}?mode=json"
+    r = requests.get(url, timeout=30)
+    r.raise_for_status()
+    data = r.json()
+
+    jobs = []
+    for item in data:
+        job_id = item.get("id") or item.get("hostedUrl") or item.get("applyUrl")
+        if not job_id:
+            continue
+
+        location = (item.get("categories") or {}).get("location") or "N/A"
+        title = item.get("text") or "Untitled"
+        apply_url = item.get("hostedUrl") or item.get("applyUrl")
+
+        posted_at = None
+        created_ms = item.get("createdAt")
+        if isinstance(created_ms, (int, float)):
+            posted_at = datetime.fromtimestamp(created_ms / 1000, tz=timezone.utc)
+
+        jobs.append({
+            "source": "lever",
+            "source_job_id": str(job_id),
+            "title": title,
+            "company": company_slug,
+            "location": location,
+            "description": safe_text(item.get("descriptionPlain") or item.get("description")),
+            "apply_url": apply_url,
+            "posted_at": posted_at,
+        })
+    return jobs
+
+def fetch_greenhouse(company_token):
+    url = f"https://boards-api.greenhouse.io/v1/boards/{company_token}/jobs?content=true"
+    r = requests.get(url, timeout=30)
+    r.raise_for_status()
+    data = r.json()
+
+    jobs = []
+    for item in data.get("jobs", []):
+        job_id = item.get("id")
+        if job_id is None:
+            continue
+
+        title = item.get("title") or "Untitled"
+        location = (item.get("location") or {}).get("name") or "N/A"
+        apply_url = item.get("absolute_url")
+
+        jobs.append({
+            "source": "greenhouse",
+            "source_job_id": str(job_id),
+            "title": title,
+            "company": company_token,
+            "location": location,
+            "description": safe_text((item.get("content") or {}).get("description")),
+            "apply_url": apply_url,
+            "posted_at": None,
+        })
+    return jobs
+
+def upsert_jobs(all_jobs):
+    if not all_jobs:
+        return 0
+    with db_conn() as conn:
+        with conn.cursor() as cur:
+            for j in all_jobs:
+                cur.execute(
+                    UPSERT_SQL,
+                    (j["source"], j["source_job_id"], j["title"], j["company"],
+                     j["location"], j.get("description"), j.get("apply_url"), j.get("posted_at"))
+                )
+    return len(all_jobs)
+
+def main():
+    all_jobs = []
+
+    for c in LEVER_COMPANIES:
+        try:
+            all_jobs += fetch_lever(c)
+            print(f"Lever {c}: OK")
+        except Exception as e:
+            print(f"Lever {c}: FAILED: {e}")
+
+    for c in GREENHOUSE_COMPANIES:
+        try:
+            all_jobs += fetch_greenhouse(c)
+            print(f"Greenhouse {c}: OK")
+        except Exception as e:
+            print(f"Greenhouse {c}: FAILED: {e}")
+
+    count = upsert_jobs(all_jobs)
+    print(f"Upserted {count} jobs")
+
+if __name__ == "__main__":
+    main()
