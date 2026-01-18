@@ -22,14 +22,12 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
-
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
 
-    if DATABASE_URL:
-        # Postgres
-        cur.execute("""
+    # Create table if it doesn't exist (new installs)
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS jobs (
             id SERIAL PRIMARY KEY,
             source TEXT,
@@ -42,30 +40,36 @@ def init_db():
             posted_at TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE (source, source_job_id)
-        )
-        """)
-    else:
-        # SQLite (no SERIAL / different timestamp defaults)
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS jobs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            source TEXT,
-            source_job_id TEXT,
-            title TEXT NOT NULL,
-            company TEXT NOT NULL,
-            location TEXT NOT NULL,
-            description TEXT,
-            apply_url TEXT,
-            posted_at TEXT,
-            created_at TEXT DEFAULT (datetime('now'))
-        )
-        """)
-        # SQLite: unique constraint only works if defined in CREATE TABLE above.
-        # For simplicity in local dev, you can skip it or recreate table with it later.
+        );
+    """)
+
+    # 🔹 Backward compatibility: add missing columns safely
+    cur.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS source TEXT;")
+    cur.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS source_job_id TEXT;")
+    cur.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS description TEXT;")
+    cur.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS apply_url TEXT;")
+    cur.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS posted_at TIMESTAMP;")
+    cur.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;")
+
+    # 🔹 Ensure unique constraint exists
+    cur.execute("""
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conname = 'jobs_source_source_job_id_key'
+        ) THEN
+            ALTER TABLE jobs
+            ADD CONSTRAINT jobs_source_source_job_id_key
+            UNIQUE (source, source_job_id);
+        END IF;
+    END $$;
+    """)
 
     conn.commit()
     cur.close()
     conn.close()
+
 
 
 # ✅ Run init_db safely on startup (won't crash without DATABASE_URL)
