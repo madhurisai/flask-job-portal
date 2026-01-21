@@ -6,18 +6,24 @@ from psycopg.rows import dict_row
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
-# Add more company slugs anytime
-GREENHOUSE_COMPANIES = ["stripe", "airbnb", "databricks", "doordash", "coinbase"]
+GREENHOUSE_COMPANIES = ["stripe", "airbnb", "databricks", "coinbase"]
 LEVER_COMPANIES = []
+
+HEADERS = {
+    "User-Agent": "job-portal-bot/1.0 (Render; +https://render.com)"
+}
 
 def db_conn():
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL not set")
     return psycopg.connect(DATABASE_URL, row_factory=dict_row)
 
+# ✅ Better UPSERT:
+# - writes fetched_at every run
+# - does NOT overwrite posted_at with NULL
 UPSERT_SQL = """
-INSERT INTO jobs (source, source_job_id, title, company, location, description, apply_url, posted_at)
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+INSERT INTO jobs (source, source_job_id, title, company, location, description, apply_url, posted_at, fetched_at)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
 ON CONFLICT (source, source_job_id)
 DO UPDATE SET
   title = EXCLUDED.title,
@@ -25,7 +31,8 @@ DO UPDATE SET
   location = EXCLUDED.location,
   description = EXCLUDED.description,
   apply_url = EXCLUDED.apply_url,
-  posted_at = EXCLUDED.posted_at;
+  posted_at = COALESCE(EXCLUDED.posted_at, jobs.posted_at),
+  fetched_at = NOW();
 """
 
 def safe_text(x, limit=4000):
@@ -33,9 +40,26 @@ def safe_text(x, limit=4000):
         return None
     return str(x)[:limit]
 
+def parse_iso_datetime(value):
+    """
+    Greenhouse returns ISO timestamps like '2025-01-21T12:34:56Z'
+    """
+    if not value:
+        return None
+    try:
+        s = str(value).strip()
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
 def fetch_lever(company_slug):
     url = f"https://api.lever.co/v0/postings/{company_slug}?mode=json"
-    r = requests.get(url, timeout=30)
+    r = requests.get(url, headers=HEADERS, timeout=30)
     r.raise_for_status()
     data = r.json()
 
@@ -68,7 +92,7 @@ def fetch_lever(company_slug):
 
 def fetch_greenhouse(company_token):
     url = f"https://boards-api.greenhouse.io/v1/boards/{company_token}/jobs?content=true"
-    r = requests.get(url, timeout=30)
+    r = requests.get(url, headers=HEADERS, timeout=30)
     r.raise_for_status()
     data = r.json()
 
@@ -88,6 +112,9 @@ def fetch_greenhouse(company_token):
         else:
             description = safe_text(content)
 
+        # ✅ Greenhouse often includes updated_at; use it as posted_at fallback
+        posted_at = parse_iso_datetime(item.get("updated_at")) or parse_iso_datetime(item.get("created_at"))
+
         jobs.append({
             "source": "greenhouse",
             "source_job_id": str(job_id),
@@ -96,7 +123,7 @@ def fetch_greenhouse(company_token):
             "location": location,
             "description": description,
             "apply_url": apply_url,
-            "posted_at": None,
+            "posted_at": posted_at,
         })
     return jobs
 
