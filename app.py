@@ -165,6 +165,8 @@ def home():
 def search():
     q = (request.args.get("q") or "").strip()
     location = (request.args.get("location") or "").strip()
+    company = (request.args.get("company") or "").strip()
+    source = (request.args.get("source") or "").strip()
     days = request.args.get("days") or "30"
 
     try:
@@ -174,51 +176,96 @@ def search():
 
     like_q = f"%{q}%"
     like_loc = f"%{location}%"
+    like_company = f"%{company}%"
+    like_source = f"%{source}%"
 
     conn = get_db_connection()
     cur = conn.cursor()
 
+    # Build dropdown options (distinct values)
     if is_postgres():
+        cur.execute("SELECT DISTINCT source FROM jobs WHERE source IS NOT NULL ORDER BY source;")
+    else:
+        cur.execute("SELECT DISTINCT source FROM jobs WHERE source IS NOT NULL ORDER BY source;")
+    sources = [r[0] if not is_postgres() else r["source"] for r in cur.fetchall()]
+
+    if is_postgres():
+        cur.execute("SELECT DISTINCT company FROM jobs WHERE company IS NOT NULL ORDER BY company;")
+    else:
+        cur.execute("SELECT DISTINCT company FROM jobs WHERE company IS NOT NULL ORDER BY company;")
+    companies = [r[0] if not is_postgres() else r["company"] for r in cur.fetchall()]
+
+    # Main search query
+    if is_postgres():
+        sql = """
+        SELECT title, company, location, description, apply_url, posted_at, fetched_at, created_at, source
+        FROM jobs
+        WHERE
+          (
+            posted_at >= NOW() - (%s || ' days')::interval
+            OR (posted_at IS NULL AND fetched_at >= NOW() - (%s || ' days')::interval)
+          )
+          AND (%s = '' OR (title ILIKE %s OR company ILIKE %s OR location ILIKE %s))
+          AND (%s = '' OR location ILIKE %s)
+          AND (%s = '' OR company ILIKE %s)
+          AND (%s = '' OR source ILIKE %s)
+        ORDER BY posted_at DESC NULLS LAST, fetched_at DESC, created_at DESC
+        LIMIT 500;
+        """
         cur.execute(
-            """
-            SELECT title, company, location, description, apply_url, posted_at, fetched_at, created_at
-            FROM jobs
-            WHERE
-              (
-                posted_at >= NOW() - (%s || ' days')::interval
-                OR (posted_at IS NULL AND fetched_at >= NOW() - (%s || ' days')::interval)
-              )
-              AND (%s = '' OR (title ILIKE %s OR company ILIKE %s OR location ILIKE %s))
-              AND (%s = '' OR location ILIKE %s)
-            ORDER BY posted_at DESC NULLS LAST, fetched_at DESC, created_at DESC
-            LIMIT 500;
-            """,
-            (days, days, q, like_q, like_q, like_q, location, like_loc),
+            sql,
+            (
+                days, days,
+                q, like_q, like_q, like_q,
+                location, like_loc,
+                company, like_company,
+                source, like_source,
+            ),
         )
     else:
         since = f"-{days} days"
+        sql = """
+        SELECT title, company, location, description, apply_url, posted_at, fetched_at, created_at, source
+        FROM jobs
+        WHERE
+          (
+            (posted_at IS NOT NULL AND posted_at >= datetime('now', ?))
+            OR (posted_at IS NULL AND fetched_at >= datetime('now', ?))
+          )
+          AND (? = '' OR (title LIKE ? OR company LIKE ? OR location LIKE ?))
+          AND (? = '' OR location LIKE ?)
+          AND (? = '' OR company LIKE ?)
+          AND (? = '' OR source LIKE ?)
+        ORDER BY COALESCE(posted_at, fetched_at, created_at) DESC
+        LIMIT 500;
+        """
         cur.execute(
-            """
-            SELECT title, company, location, description, apply_url, posted_at, fetched_at, created_at
-            FROM jobs
-            WHERE
-              (
-                (posted_at IS NOT NULL AND posted_at >= datetime('now', ?))
-                OR (posted_at IS NULL AND fetched_at >= datetime('now', ?))
-              )
-              AND (? = '' OR (title LIKE ? OR company LIKE ? OR location LIKE ?))
-              AND (? = '' OR location LIKE ?)
-            ORDER BY COALESCE(posted_at, fetched_at, created_at) DESC
-            LIMIT 500;
-            """,
-            (since, since, q, like_q, like_q, like_q, location, like_loc),
+            sql,
+            (
+                since, since,
+                q, like_q, like_q, like_q,
+                location, like_loc,
+                company, like_company,
+                source, like_source,
+            ),
         )
 
     jobs = cur.fetchall()
     cur.close()
     conn.close()
 
-    return render_template("search.html", jobs=jobs, q=q, location=location, days=days)
+    return render_template(
+        "search.html",
+        jobs=jobs,
+        q=q,
+        location=location,
+        company=company,
+        source=source,
+        days=days,
+        sources=sources,
+        companies=companies,
+    )
+
 
 
 @app.route("/add", methods=["GET", "POST"])
