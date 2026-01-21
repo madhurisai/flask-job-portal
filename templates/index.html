@@ -3,80 +3,60 @@
 <head>
   <title>Job Portal</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 24px;
-    }
-    .top-links {
-      margin-bottom: 16px;
-    }
-    .top-links a {
-      margin-right: 16px;
-      text-decoration: none;
-      color: #0066cc;
-      font-weight: bold;
-    }
-    .job {
-      padding: 12px 0;
-      border-bottom: 1px solid #ddd;
-    }
-    .meta {
-      color: #666;
-      font-size: 14px;
-    }
-  </style>
 </head>
 <body>
+  <div class="container">
 
-  <h1>Job Openings (Today)</h1>
-
-  <div class="top-links">
-    <a href="/search">🔍 Search all jobs</a>
-    <a href="/add">➕ Add New Job</a>
-  </div>
-
-  <hr>
-
-  {% if jobs|length == 0 %}
-    <p>No jobs posted today.</p>
-  {% endif %}
-
-  {% for job in jobs %}
-    <div class="job">
-      <h3 style="margin:0;">
-        {% if job.apply_url %}
-          <a href="{{ job.apply_url }}" target="_blank" rel="noopener noreferrer">
-            {{ job.title }}
-          </a>
-        {% else %}
-          {{ job.title }}
-        {% endif %}
-      </h3>
-
-      <div class="meta">
-        {{ job.company }} — {{ job.location }}
-        <br>
-        Posted:
-        {% if job.posted_at %}
-          {{ job.posted_at }}
-        {% else %}
-          Unknown
-        {% endif %}
-        |
-        Fetched:
-        {{ job.fetched_at or job.created_at }}
+    <div class="header">
+      <div>
+        <h1>Job Openings (Today)</h1>
+        <p class="subtext">Fresh jobs collected today. Use Search to explore older jobs + filters.</p>
       </div>
 
-      {% if job.description %}
-        <details>
-          <summary>Description</summary>
-          <div>{{ job.description | safe }}</div>
-        </details>
-      {% endif %}
+      <div class="nav">
+        <a class="btn primary" href="/search">🔍 Search all jobs</a>
+        <a class="btn green" href="/add">➕ Add New Job</a>
+      </div>
     </div>
-  {% endfor %}
 
+    <div class="jobs">
+      {% if jobs|length == 0 %}
+        <div class="empty">No jobs posted today.</div>
+      {% endif %}
+
+      {% for job in jobs %}
+        <div class="job">
+          <h3 class="job-title">
+            {% if job.apply_url %}
+              <a href="{{ job.apply_url }}" target="_blank" rel="noopener noreferrer">{{ job.title }}</a>
+            {% else %}
+              {{ job.title }}
+            {% endif %}
+          </h3>
+
+          <div class="badges">
+            <span class="badge accent">{{ job.company }}</span>
+            <span class="badge">{{ job.location }}</span>
+            {% if job.source %}
+              <span class="badge green">{{ job.source }}</span>
+            {% endif %}
+          </div>
+
+          <div class="meta">
+            Posted: {{ job.posted_at or "Unknown" }} |
+            Fetched: {{ job.fetched_at or job.created_at }}
+          </div>
+
+          {% if job.description %}
+            <details>
+              <summary>View description</summary>
+              <div>{{ job.description | safe }}</div>
+            </details>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+
+  </div>
 </body>
 </html>
-
