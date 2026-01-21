@@ -3,17 +3,80 @@
 <head>
   <title>Job Portal</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 24px;
+    }
+    .top-links {
+      margin-bottom: 16px;
+    }
+    .top-links a {
+      margin-right: 16px;
+      text-decoration: none;
+      color: #0066cc;
+      font-weight: bold;
+    }
+    .job {
+      padding: 12px 0;
+      border-bottom: 1px solid #ddd;
+    }
+    .meta {
+      color: #666;
+      font-size: 14px;
+    }
+  </style>
 </head>
 <body>
-  <h1>Job Openings</h1>
-  <a href="/add">Add New Job</a>
+
+  <h1>Job Openings (Today)</h1>
+
+  <div class="top-links">
+    <a href="/search">🔍 Search all jobs</a>
+    <a href="/add">➕ Add New Job</a>
+  </div>
+
   <hr>
 
+  {% if jobs|length == 0 %}
+    <p>No jobs posted today.</p>
+  {% endif %}
+
   {% for job in jobs %}
-    <h3>{{ job.title }}</h3>
-    <p>{{ job.company }} - {{ job.location }}</p>
-    <hr>
+    <div class="job">
+      <h3 style="margin:0;">
+        {% if job.apply_url %}
+          <a href="{{ job.apply_url }}" target="_blank" rel="noopener noreferrer">
+            {{ job.title }}
+          </a>
+        {% else %}
+          {{ job.title }}
+        {% endif %}
+      </h3>
+
+      <div class="meta">
+        {{ job.company }} — {{ job.location }}
+        <br>
+        Posted:
+        {% if job.posted_at %}
+          {{ job.posted_at }}
+        {% else %}
+          Unknown
+        {% endif %}
+        |
+        Fetched:
+        {{ job.fetched_at or job.created_at }}
+      </div>
+
+      {% if job.description %}
+        <details>
+          <summary>Description</summary>
+          <div>{{ job.description | safe }}</div>
+        </details>
+      {% endif %}
+    </div>
   {% endfor %}
 
 </body>
 </html>
+
