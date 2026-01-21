@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Search Jobs</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 24px;
+    }
+    form {
+      margin-bottom: 20px;
+    }
+    input, select, button {
+      padding: 8px;
+      margin-right: 8px;
+      margin-bottom: 8px;
+    }
+    .job {
+      padding: 12px 0;
+      border-bottom: 1px solid #ddd;
+    }
+    .meta {
+      color: #666;
+      font-size: 14px;
+    }
+    a {
+      color: #0066cc;
+      text-decoration: none;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Search All Jobs</h1>
+
+  <form method="GET" action="/search">
+    <input
+      name="q"
+      placeholder="Keyword (python, data engineer...)"
+      value="{{ q or '' }}"
+    >
+
+    <input
+      name="location"
+      placeholder="Location (optional)"
+      value="{{ location or '' }}"
+    >
+
+    <select name="source">
+      <option value="">All sources</option>
+      {% for s in sources %}
+        <option value="{{ s }}" {% if source == s %}selected{% endif %}>
+          {{ s }}
+        </option>
+      {% endfor %}
+    </select>
+
+    <select name="company">
+      <option value="">All companies</option>
+      {% for c in companies %}
+        <option value="{{ c }}" {% if company == c %}selected{% endif %}>
+          {{ c }}
+        </option>
+      {% endfor %}
+    </select>
+
+    <select name="days">
+      <option value="1" {% if days == 1 %}selected{% endif %}>Last 24 hours</option>
+      <option value="3" {% if days == 3 %}selected{% endif %}>Last 3 days</option>
+      <option value="7" {% if days == 7 %}selected{% endif %}>Last 7 days</option>
+      <option value="30" {% if days == 30 %}selected{% endif %}>Last 30 days</option>
+      <option value="90" {% if days == 90 %}selected{% endif %}>Last 90 days</option>
+      <option value="365" {% if days == 365 %}selected{% endif %}>Last 1 year</option>
+    </select>
+
+    <button type="submit">Filter</button>
+    <a href="/search">Reset</a> |
+    <a href="/">Back to Today</a>
+  </form>
+
+  <hr>
+
+  {% if jobs|length == 0 %}
+    <p>No jobs found.</p>
+  {% endif %}
+
+  {% for job in jobs %}
+    <div class="job">
+      <h3 style="margin:0;">
+        {% if job.apply_url %}
+          <a href="{{ job.apply_url }}" target="_blank" rel="noopener noreferrer">
+            {{ job.title }}
+          </a>
+        {% else %}
+          {{ job.title }}
+        {% endif %}
+      </h3>
+
+      <div class="meta">
+        {{ job.company }} — {{ job.location }} <br>
+        Source: {{ job.source }} <br>
+        Posted: {{ job.posted_at or "Unknown" }} |
+        Fetched: {{ job.fetched_at or job.created_at }}
+      </div>
+
+      {% if job.description %}
+        <details>
+          <summary>Description</summary>
+          <div>{{ job.description | safe }}</div>
+        </details>
+      {% endif %}
+    </div>
+  {% endfor %}
+
+</body>
+</html>
