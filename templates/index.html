@@ -48,4 +48,17 @@
           </div>
 
           {% if job.description %}
-            <de
+            <details>
+              <summary>View description</summary>
+              <div class="job-description">
+                {{ job.description | safe }}
+              </div>
+            </details>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+
+  </div>
+</body>
+</html>
