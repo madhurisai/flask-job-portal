@@ -83,7 +83,9 @@
           {% if job.description %}
             <details>
               <summary>View description</summary>
-              <div>{{ job.description | safe }}</div>
+              <div class="job-description">
+                {{ job.description | safe }}
+              </div>
             </details>
           {% endif %}
         </div>
@@ -93,4 +95,3 @@
   </div>
 </body>
 </html>
-
